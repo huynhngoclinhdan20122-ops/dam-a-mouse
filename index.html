@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game Đập Chuột - Whack A Mole</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+  
+  <style>
+    * {
+      font-family: 'Fredoka', cursive, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: manipulation;
+    }
+
+    /* Custom animated hammer cursor styling */
+    .hammer-cursor {
+      cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='48' viewBox='0 0 24 24' fill='%23eab308'><path d='M19.7 4.3c-.4-.4-1-.4-1.4 0l-1.9 1.9-2.8-2.8c-.4-.4-1-.4-1.4 0s-.4 1 0 1.4l.7.7-6.8 6.8c-.8.8-.8 2 0 2.8l2.8 2.8c.8.8 2 .8 2.8 0l6.8-6.8.7.7c.4.4 1 .4 1.4 0s.4-1 0-1.4l-2.8-2.8 1.9-1.9c.4-.4.4-1 0-1.4z'/></svg>") 12 12, auto;
+    }
+
+    .hammer-hit {
+      animation: hitAnimation 0.15s ease-in-out;
+    }
+
+    @keyframes hitAnimation {
+      0% { transform: rotate(0deg) scale(1); }
+      50% { transform: rotate(-35deg) scale(1.15); }
+      100% { transform: rotate(0deg) scale(1); }
+    }
+
+    /* 3D Hole & Mound styling */
+    .hole-container {
+      perspective: 600px;
+    }
+
+    .hole-rim {
+      background: linear-gradient(180deg, #3a220f 0%, #1f1005 100%);
+      box-shadow: inset 0 12px 18px rgba(0,0,0,0.8), 0 6px 0 #5c3a1e;
+      border-radius: 50% / 40%;
+    }
+
+    .dirt-mound {
+      background: linear-gradient(180deg, #85532b 0%, #543114 100%);
+      border-top: 4px solid #a46938;
+      box-shadow: 0 8px 15px rgba(0,0,0,0.3);
+    }
+
+    /* Pop-up character movement */
+    .character {
+      transition: transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      transform: translateY(100%);
+    }
+
+    .character.up {
+      transform: translateY(0%);
+    }
+
+    /* Pop animation on whack */
+    .whacked {
+      animation: whackPop 0.25s ease-out forwards;
+    }
+
+    @keyframes whackPop {
+      0% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(10px) scale(0.8) rotate(15deg); filter: brightness(1.5); }
+      100% { transform: translateY(100%) scale(0.5); }
+    }
+
+    /* Floating score text overlay */
+    .float-score {
+      animation: floatUp 0.7s cubic-bezier(0.23, 1, 0.32, 1) forwards;
+    }
+
+    @keyframes floatUp {
+      0% { opacity: 1; transform: translateY(0) scale(1); }
+      100% { opacity: 0; transform: translateY(-50px) scale(1.4); }
+    }
+
+    /* Screen Shake on Bomb Explosion */
+    .shake {
+      animation: shakeEffect 0.4s ease-in-out;
+    }
+
+    @keyframes shakeEffect {
+      0%, 100% { transform: translate(0, 0); }
+      20% { transform: translate(-8px, 6px); }
+      40% { transform: translate(8px, -6px); }
+      60% { transform: translate(-5px, -4px); }
+      80% { transform: translate(5px, 4px); }
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-b from-sky-400 via-emerald-400 to-green-600 min-h-screen flex items-center justify-center p-3 sm:p-6 select-none overflow-x-hidden hammer-cursor">
+
+  <!-- Main Game Card Container -->
+  <div id="game-app" class="relative w-full max-w-2xl bg-amber-50/90 backdrop-blur-md rounded-3xl shadow-2xl border-4 border-amber-800/20 p-4 sm:p-6 overflow-hidden">
+    
+    <!-- Title Header -->
+    <header class="text-center mb-4">
+      <h1 class="text-3xl sm:text-5xl font-black text-amber-900 drop-shadow-md tracking-wider uppercase flex items-center justify-center gap-2">
+        <span>🔨</span> ĐẬP CHUỘT <span>🕳️</span>
+      </h1>
+      <p class="text-xs sm:text-sm text-amber-800 font-semibold mt-1">Săn chuột vàng - Tránh xa bom nổ!</p>
+    </header>
+
+    <!-- STATUS BAR (Score, Timer, Highscore, Mode) -->
+    <div class="grid grid-cols-3 gap-2 sm:gap-4 mb-5 text-center">
+      <!-- Current Score -->
+      <div class="bg-amber-100 border-2 border-amber-400 rounded-2xl p-2 sm:p-3 shadow-inner">
+        <div class="text-xs text-amber-700 uppercase font-bold tracking-wider">Điểm</div>
+        <div id="score-display" class="text-2xl sm:text-4xl font-extrabold text-amber-900">0</div>
+      </div>
+
+      <!-- Time Left -->
+      <div class="bg-amber-100 border-2 border-amber-400 rounded-2xl p-2 sm:p-3 shadow-inner">
+        <div class="text-xs text-amber-700 uppercase font-bold tracking-wider">Thời gian</div>
+        <div id="time-display" class="text-2xl sm:text-4xl font-extrabold text-red-600">30s</div>
+      </div>
+
+      <!-- High Score for Current Mode -->
+      <div class="bg-amber-100 border-2 border-amber-400 rounded-2xl p-2 sm:p-3 shadow-inner">
+        <div class="text-xs text-amber-700 uppercase font-bold tracking-wider">Điểm Cao</div>
+        <div id="highscore-display" class="text-2xl sm:text-4xl font-extrabold text-emerald-700">0</div>
+      </div>
+    </div>
+
+    <!-- Active Difficulty Badge & Controls Bar -->
+    <div class="flex justify-between items-center mb-4 px-2">
+      <div class="flex items-center gap-2">
+        <span class="text-xs sm:text-sm font-bold text-amber-900">Mức độ:</span>
+        <span id="current-mode-badge" class="px-3 py-1 bg-green-500 text-white font-bold text-xs sm:text-sm rounded-full shadow">Dễ</span>
+      </div>
+      <button id="change-mode-btn" class="text-xs sm:text-sm font-bold text-amber-900 underline hover:text-amber-700 transition">
+        <i class="fa-solid fa-gear"></i> Đổi độ khó
+      </button>
+    </div>
+
+    <!-- 3x3 GAME GRID CONTAINER -->
+    <div id="grid-container" class="relative grid grid-cols-3 gap-3 sm:gap-6 bg-emerald-600/30 p-4 sm:p-6 rounded-2xl border-2 border-emerald-700/20 shadow-inner">
+      <!-- 9 Holes generated dynamically via JS -->
+    </div>
+
+    <!-- Floating Score Container -->
+    <div id="float-text-layer" class="pointer-events-none absolute inset-0 z-30"></div>
+
+    <!-- 1. START / DIFFICULTY SELECT OVERLAY -->
+    <div id="difficulty-modal" class="absolute inset-0 bg-amber-950/80 backdrop-blur-sm z-40 flex flex-col items-center justify-center p-6 text-center transition-opacity duration-300">
+      <div class="bg-amber-50 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border-4 border-amber-500">
+        <h2 class="text-2xl sm:text-3xl font-black text-amber-900 mb-2">CHỌN MỨC ĐỘ KHÓ</h2>
+        <p class="text-xs sm:text-sm text-amber-700 mb-6">Hãy chọn độ thử thách phù hợp với phản xạ của bạn!</p>
+
+        <div class="space-y-3 mb-6">
+          <!-- Easy -->
+          <button onclick="selectDifficulty('easy')" class="w-full py-3.5 px-4 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-bold text-lg rounded-2xl shadow-lg transform active:scale-95 transition flex items-center justify-between">
+            <span class="flex items-center gap-2">🟢 Dễ</span>
+            <span class="text-xs bg-black/20 px-2 py-1 rounded">1200ms • 30s</span>
+          </button>
+
+          <!-- Medium -->
+          <button onclick="selectDifficulty('medium')" class="w-full py-3.5 px-4 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-lg rounded-2xl shadow-lg transform active:scale-95 transition flex items-center justify-between">
+            <span class="flex items-center gap-2">🟡 Trung Bình</span>
+            <span class="text-xs bg-black/20 px-2 py-1 rounded">800ms • Có Bom • 30s</span>
+          </button>
+
+          <!-- Insane/Hardcore -->
+          <button onclick="selectDifficulty('hardcore')" class="w-full py-3.5 px-4 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-700 hover:to-rose-800 text-white font-bold text-lg rounded-2xl shadow-lg transform active:scale-95 transition flex items-center justify-between border-2 border-yellow-300 animate-pulse">
+            <span class="flex items-center gap-2">🔴 Siêu Khó</span>
+            <span class="text-xs bg-black/20 px-2 py-1 rounded">450ms • Chuột Vàng & Bom • 25s</span>
+          </button>
+        </div>
+
+        <!-- Start Button -->
+        <button id="start-game-btn" onclick="startGame()" class="w-full py-4 bg-yellow-400 hover:bg-yellow-300 text-amber-950 font-black text-xl rounded-2xl shadow-xl border-b-4 border-yellow-600 transform active:scale-95 transition uppercase tracking-wider">
+          <i class="fa-solid fa-play mr-2"></i> BẮT ĐẦU CHƠI
+        </button>
+      </div>
+    </div>
+
+    <!-- 2. GAME OVER MODAL -->
+    <div id="gameover-modal" class="hidden absolute inset-0 bg-amber-950/85 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-6 text-center">
+      <div class="bg-amber-50 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border-4 border-amber-600 transform scale-100 transition">
+        <div id="gameover-icon" class="text-5xl mb-2">🎉</div>
+        <h2 class="text-3xl font-black text-amber-900 mb-1">HẾT GIỜ!</h2>
+        <p id="new-record-tag" class="hidden text-xs font-bold text-emerald-600 bg-emerald-100 py-1 px-3 rounded-full inline-block mb-3">🏆 KỶ LỤC MỚI!</p>
+
+        <div class="bg-amber-100 rounded-2xl p-4 my-4 space-y-2 border border-amber-200">
+          <div class="flex justify-between items-center text-sm font-bold text-amber-800">
+            <span>Tổng điểm đạt được:</span>
+            <span id="final-score" class="text-2xl text-amber-950">0</span>
+          </div>
+          <div class="flex justify-between items-center text-sm font-bold text-amber-800">
+            <span>Điểm cao nhất (<span id="final-mode-label">Dễ</span>):</span>
+            <span id="final-highscore" class="text-xl text-emerald-700">0</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mt-6">
+          <button onclick="startGame()" class="py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl shadow-lg transform active:scale-95 transition">
+            <i class="fa-solid fa-rotate-right mr-1"></i> Chơi Lại
+          </button>
+          <button onclick="openDifficultyModal()" class="py-3 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-2xl shadow-lg transform active:scale-95 transition">
+            <i class="fa-solid fa-sliders mr-1"></i> Đổi Độ Khó
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    /* ===================================================================
+       1. WEB AUDIO API SYNTHESIZER (No external audio files required)
+       =================================================================== */
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new AudioCtx();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    // Sound: Normal Whack (Punch/Thump sound)
+    function playHitSound() {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(160, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(40, audioCtx.currentTime + 0.12);
+      
+      gain.gain.setValueAtTime(1, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.12);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.12);
+    }
+
+    // Sound: Golden Mole Whack (High pitch sparkle chime)
+    function playGoldSound() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.04);
+        
+        gain.gain.setValueAtTime(0.3, now + idx * 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + idx * 0.04 + 0.15);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now + idx * 0.04);
+        osc.stop(now + idx * 0.04 + 0.15);
+      });
+    }
+
+    // Sound: Bomb Explosion (Low noise/boom rumble)
+    function playBombSound() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      
+      // Low noise pitch drop
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(100, now);
+      osc.frequency.linearRampToValueAtTime(20, now + 0.35);
+      
+      gain.gain.setValueAtTime(0.8, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+      
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + 0.35);
+    }
+
+    // Sound: Game Over Victory Fanfare
+    function playGameOverSound() {
+      if (!audioCtx) return;
+      const notes = [261.63, 329.63, 392.00, 523.25];
+      notes.forEach((freq, i) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const start = audioCtx.currentTime + i * 0.12;
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, start);
+        
+        gain.gain.setValueAtTime(0.4, start);
+        gain.gain.exponentialRampToValueAtTime(0.01, start + 0.25);
+        
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(start);
+        osc.stop(start + 0.25);
+      });
+    }
+
+    /* ===================================================================
+       2. GAME CONFIGURATION & STATE
+       =================================================================== */
+    const CONFIG = {
+      easy: {
+        name: "Dễ",
+        badgeClass: "bg-green-500",
+        popDuration: 1200,
+        gameTime: 30,
+        spawnInterval: 1000,
+        spawnCount: [1, 1], // [min, max] characters popping simultaneously
+        bombChance: 0.0,
+        goldChance: 0.15
+      },
+      medium: {
+        name: "Trung bình",
+        badgeClass: "bg-amber-500",
+        popDuration: 800,
+        gameTime: 30,
+        spawnInterval: 750,
+        spawnCount: [1, 2],
+        bombChance: 0.2,
+        goldChance: 0.2
+      },
+      hardcore: {
+        name: "Siêu khó",
+        badgeClass: "bg-red-600",
+        popDuration: 450,
+        gameTime: 25,
+        spawnInterval: 480,
+        spawnCount: [2, 3],
+        bombChance: 0.3,
+        goldChance: 0.25
+      }
+    };
+
+    let selectedDifficulty = 'easy';
+    let score = 0;
+    let timeRemaining = 0;
+    let gameTimer = null;
+    let spawnTimer = null;
+    let isPlaying = false;
+    let activeHoles = new Set();
+
+    // DOM Elements
+    const gridContainer = document.getElementById('grid-container');
+    const scoreDisplay = document.getElementById('score-display');
+    const timeDisplay = document.getElementById('time-display');
+    const highscoreDisplay = document.getElementById('highscore-display');
+    const currentModeBadge = document.getElementById('current-mode-badge');
+    const difficultyModal = document.getElementById('difficulty-modal');
+    const gameoverModal = document.getElementById('gameover-modal');
+    const floatTextLayer = document.getElementById('float-text-layer');
+
+    /* ===================================================================
+       3. BOARD INITIALIZATION & CURSOR ANIMATION
+       =================================================================== */
+    function buildBoard() {
+      gridContainer.innerHTML = '';
+      for (let i = 0; i < 9; i++) {
+        const holeWrapper = document.createElement('div');
+        holeWrapper.className = 'hole-container relative flex flex-col items-center justify-end h-28 sm:h-36 overflow-hidden rounded-3xl';
+        
+        holeWrapper.innerHTML = `
+          <!-- Hole rim interior -->
+          <div class="hole-rim absolute bottom-0 w-11/12 h-3/5 z-0"></div>
+          
+          <!-- Character (Mole/Gold/Bomb) -->
+          <div id="hole-${i}" class="character absolute bottom-2 z-10 w-20 h-20 sm:w-28 sm:h-28 flex items-center justify-center cursor-pointer transition-transform">
+            <!-- Dynamic SVG injected here -->
+          </div>
+
+          <!-- Front dirt mound to mask character -->
+          <div class="dirt-mound absolute bottom-0 w-full h-2/5 z-20 rounded-b-3xl pointer-events-none"></div>
+        `;
+        gridContainer.appendChild(holeWrapper);
+      }
+    }
+
+    // Trigger visual hammer tilt on mouse click / tap
+    document.body.addEventListener('mousedown', () => {
+      document.body.classList.add('hammer-hit');
+      setTimeout(() => document.body.classList.remove('hammer-hit'), 150);
+    });
+
+    /* ===================================================================
+       4. CHARACTER SVG GENERATORS
+       =================================================================== */
+    function getCharacterSVG(type) {
+      if (type === 'mole') {
+        return `
+          <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-md">
+            <!-- Mole Body -->
+            <ellipse cx="50" cy="55" rx="38" ry="35" fill="#8B5A2B"/>
+            <ellipse cx="50" cy="62" rx="26" ry="22" fill="#D2B48C"/>
+            <!-- Eyes -->
+            <circle cx="36" cy="42" r="5" fill="#000"/>
+            <circle cx="64" cy="42" r="5" fill="#000"/>
+            <circle cx="38" cy="40" r="1.5" fill="#FFF"/>
+            <circle cx="66" cy="40" r="1.5" fill="#FFF"/>
+            <!-- Snout & Nose -->
+            <ellipse cx="50" cy="48" rx="12" ry="8" fill="#FFC0CB"/>
+            <ellipse cx="50" cy="46" rx="6" ry="4" fill="#8B0000"/>
+            <!-- Cheeks -->
+            <circle cx="28" cy="50" r="4" fill="#FFA07A" opacity="0.6"/>
+            <circle cx="72" cy="50" r="4" fill="#FFA07A" opacity="0.6"/>
+            <!-- Teeth -->
+            <rect x="47" y="54" width="6" height="5" fill="#FFF" rx="1"/>
+          </svg>`;
+      } else if (type === 'gold') {
+        return `
+          <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-lg animate-pulse">
+            <!-- Crown/Glow -->
+            <path d="M 35 15 L 42 28 L 50 18 L 58 28 L 65 15 L 62 33 L 38 33 Z" fill="#FFD700" stroke="#B8860B" stroke-width="2"/>
+            <!-- Golden Mole Body -->
+            <ellipse cx="50" cy="58" rx="38" ry="35" fill="#FFD700"/>
+            <ellipse cx="50" cy="65" rx="26" ry="22" fill="#FFF8DC"/>
+            <!-- Sunglasses -->
+            <rect x="25" y="42" width="22" height="14" rx="3" fill="#111"/>
+            <rect x="53" y="42" width="22" height="14" rx="3" fill="#111"/>
+            <line x1="47" y1="46" x2="53" y2="46" stroke="#111" stroke-width="3"/>
+            <!-- Snout -->
+            <ellipse cx="50" cy="58" rx="10" ry="6" fill="#FFB6C1"/>
+            <ellipse cx="50" cy="56" rx="5" ry="3" fill="#D2691E"/>
+          </svg>`;
+      } else if (type === 'bomb') {
+        return `
+          <svg viewBox="0 0 100 100" class="w-full h-full drop-shadow-xl">
+            <!-- Fuse Spark -->
+            <circle cx="72" cy="18" r="4" fill="#FF4500" class="animate-ping"/>
+            <path d="M 50 35 Q 65 25 70 20" stroke="#8B4513" stroke-width="4" fill="none"/>
+            <!-- Bomb Body -->
+            <circle cx="50" cy="60" r="32" fill="#222"/>
+            <ellipse cx="40" cy="48" rx="8" ry="4" fill="#555" transform="rotate(-30 40 48)"/>
+            <!-- Skull / Warning Mark -->
+            <text x="50" y="68" font-size="22" text-anchor="middle" fill="#FF3333" font-weight="bold">💣</text>
+          </svg>`;
+      }
+    }
+
+    /* ===================================================================
+       5. GAMEPLAY LOGIC & SPAWNING
+       =================================================================== */
+    function selectDifficulty(mode) {
+      selectedDifficulty = mode;
+      updateUIForDifficulty();
+    }
+
+    function updateUIForDifficulty() {
+      const conf = CONFIG[selectedDifficulty];
+      currentModeBadge.textContent = conf.name;
+      currentModeBadge.className = `px-3 py-1 text-white font-bold text-xs sm:text-sm rounded-full shadow ${conf.badgeClass}`;
+      timeDisplay.textContent = conf.gameTime + 's';
+      
+      // Load saved highscore
+      const savedHighScore = localStorage.getItem(`whack_highscore_${selectedDifficulty}`) || 0;
+      highscoreDisplay.textContent = savedHighScore;
+    }
+
+    function openDifficultyModal() {
+      isPlaying = false;
+      clearInterval(gameTimer);
+      clearInterval(spawnTimer);
+      gameoverModal.classList.add('hidden');
+      difficultyModal.classList.remove('hidden');
+      difficultyModal.style.opacity = '1';
+    }
+
+    function startGame() {
+      initAudio();
+      const conf = CONFIG[selectedDifficulty];
+
+      // Reset Variables
+      score = 0;
+      timeRemaining = conf.gameTime;
+      isPlaying = true;
+      activeHoles.clear();
+
+      scoreDisplay.textContent = score;
+      timeDisplay.textContent = timeRemaining + 's';
+      updateUIForDifficulty();
+
+      // Hide Modals
+      difficultyModal.classList.add('hidden');
+      gameoverModal.classList.add('hidden');
+
+      // Clear grid
+      for (let i = 0; i < 9; i++) {
+        const el = document.getElementById(`hole-${i}`);
+        if (el) {
+          el.className = 'character absolute bottom-2 z-10 w-20 h-20 sm:w-28 sm:h-28 flex items-center justify-center cursor-pointer transition-transform';
+          el.innerHTML = '';
+        }
+      }
+
+      // Start Countdown Timers
+      clearInterval(gameTimer);
+      clearInterval(spawnTimer);
+
+      gameTimer = setInterval(() => {
+        timeRemaining--;
+        timeDisplay.textContent = timeRemaining + 's';
+
+        if (timeRemaining <= 0) {
+          endGame();
+        }
+      }, 1000);
+
+      spawnTimer = setInterval(() => {
+        if (isPlaying) {
+          spawnCharacters();
+        }
+      }, conf.spawnInterval);
+    }
+
+    function spawnCharacters() {
+      const conf = CONFIG[selectedDifficulty];
+      const minCount = conf.spawnCount[0];
+      const maxCount = conf.spawnCount[1];
+      const countToSpawn = Math.floor(Math.random() * (maxCount - minCount + 1)) + minCount;
+
+      for (let c = 0; c < countToSpawn; c++) {
+        // Find available hole
+        const availableHoles = [];
+        for (let i = 0; i < 9; i++) {
+          if (!activeHoles.has(i)) availableHoles.push(i);
+        }
+
+        if (availableHoles.length === 0) break;
+
+        const holeIdx = availableHoles[Math.floor(Math.random() * availableHoles.length)];
+        activeHoles.add(holeIdx);
+
+        // Determine entity type
+        const rand = Math.random();
+        let type = 'mole';
+        if (rand < conf.bombChance) {
+          type = 'bomb';
+        } else if (rand < conf.bombChance + conf.goldChance) {
+          type = 'gold';
+        }
+
+        const holeElem = document.getElementById(`hole-${holeIdx}`);
+        holeElem.innerHTML = getCharacterSVG(type);
+        holeElem.dataset.type = type;
+        holeElem.classList.remove('whacked');
+        
+        // Popup
+        requestAnimationFrame(() => {
+          holeElem.classList.add('up');
+        });
+
+        // Set click listener
+        holeElem.onclick = (e) => whack(e, holeIdx, type);
+
+        // Retract after duration
+        setTimeout(() => {
+          if (activeHoles.has(holeIdx)) {
+            retractCharacter(holeIdx);
+          }
+        }, conf.popDuration);
+      }
+    }
+
+    function retractCharacter(holeIdx) {
+      const holeElem = document.getElementById(`hole-${holeIdx}`);
+      if (holeElem) {
+        holeElem.classList.remove('up');
+        setTimeout(() => {
+          holeElem.innerHTML = '';
+          holeElem.onclick = null;
+          activeHoles.delete(holeIdx);
+        }, 150);
+      }
+    }
+
+    /* ===================================================================
+       6. WHACK INTERACTION & FLOATING SCORE
+       =================================================================== */
+    function whack(event, holeIdx, type) {
+      if (!isPlaying || !activeHoles.has(holeIdx)) return;
+
+      const holeElem = document.getElementById(`hole-${holeIdx}`);
+      activeHoles.delete(holeIdx);
+
+      // Animation & sound based on entity
+      holeElem.classList.add('whacked');
+      holeElem.classList.remove('up');
+
+      let points = 0;
+      let text = '';
+      let colorClass = '';
+
+      if (type === 'mole') {
+        points = 10;
+        text = '+10';
+        colorClass = 'text-amber-900';
+        playHitSound();
+      } else if (type === 'gold') {
+        points = 30;
+        text = '+30 ✨';
+        colorClass = 'text-yellow-500 font-black';
+        playGoldSound();
+      } else if (type === 'bomb') {
+        points = -20;
+        text = '-20 💥';
+        colorClass = 'text-red-600 font-black';
+        playBombSound();
+        triggerShake();
+      }
+
+      score = Math.max(0, score + points);
+      scoreDisplay.textContent = score;
+
+      showFloatingText(event, text, colorClass);
+
+      setTimeout(() => {
+        holeElem.innerHTML = '';
+        holeElem.classList.remove('whacked');
+        holeElem.onclick = null;
+      }, 250);
+    }
+
+    function showFloatingText(event, text, colorClass) {
+      const rect = gridContainer.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+
+      const floatEl = document.createElement('div');
+      floatEl.className = `float-score absolute text-2xl font-black drop-shadow ${colorClass}`;
+      floatEl.style.left = `${x - 20}px`;
+      floatEl.style.top = `${y - 20}px`;
+      floatEl.textContent = text;
+
+      floatTextLayer.appendChild(floatEl);
+
+      setTimeout(() => {
+        floatEl.remove();
+      }, 700);
+    }
+
+    function triggerShake() {
+      const app = document.getElementById('game-app');
+      app.classList.add('shake');
+      setTimeout(() => app.classList.remove('shake'), 400);
+    }
+
+    /* ===================================================================
+       7. GAME OVER & HIGH SCORE MANAGEMENT
+       =================================================================== */
+    function endGame() {
+      isPlaying = false;
+      clearInterval(gameTimer);
+      clearInterval(spawnTimer);
+
+      playGameOverSound();
+
+      // Check Highscore
+      const storageKey = `whack_highscore_${selectedDifficulty}`;
+      const currentHighScore = parseInt(localStorage.getItem(storageKey) || '0', 10);
+      let isNewRecord = false;
+
+      if (score > currentHighScore) {
+        localStorage.setItem(storageKey, score);
+        isNewRecord = true;
+      }
